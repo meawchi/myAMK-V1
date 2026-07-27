@@ -6131,6 +6131,7 @@ const Profil = ({
   const [exporting, setExporting] = useState("");
   const [exportMsg, setExportMsg] = useState("");
   const [bkMsg, setBkMsg] = useState("");
+  const [pending, setPending] = useState(null);
   const bkRef = useRef(null);
   const doBackup = () => {
     try {
@@ -6164,7 +6165,7 @@ const Profil = ({
     const file = ev.target.files && ev.target.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = async e => {
+    reader.onload = e => {
       try {
         let txt = e.target.result;
         if (txt.charCodeAt(0) === 0xFEFF) txt = txt.slice(1);
@@ -6174,19 +6175,12 @@ const Profil = ({
           setTimeout(() => setBkMsg(""), 5000);
           return;
         }
-        if (!window.confirm(`Pulihkan ${d.farms.length} ladang dari sandaran bertarikh ${(d.tarikh || "").slice(0, 10)}?\n\nAMARAN: Data ladang semasa akan DIGANTIKAN.`)) return;
-        await saveData(`myamk-farms-${user.username}`, d.farms);
-        if (d.indeks && typeof d.indeks === "object") {
-          for (const k of Object.keys(d.indeks)) {
-            const nk = k.replace(/^myamk-indeks-[^-]+-/, `myamk-indeks-${user.username}-`);
-            try {
-              localStorage.setItem(nk, JSON.stringify(d.indeks[k]));
-            } catch (er) {}
-          }
+        if (d.farms.length === 0) {
+          setBkMsg("✕ FAIL SANDARAN TIDAK MENGANDUNGI SEBARANG LADANG.");
+          setTimeout(() => setBkMsg(""), 5000);
+          return;
         }
-        setBkMsg(`✓ ${d.farms.length} LADANG BERJAYA DIPULIHKAN!`);
-        if (onRestore) onRestore(d.farms);
-        setTimeout(() => setBkMsg(""), 5000);
+        setPending(d);
       } catch (err) {
         setBkMsg("✕ RALAT MEMBACA FAIL SANDARAN");
         setTimeout(() => setBkMsg(""), 4000);
@@ -6194,6 +6188,48 @@ const Profil = ({
     };
     reader.readAsText(file);
     ev.target.value = "";
+  };
+  const applyRestore = async mode => {
+    const d = pending;
+    if (!d) return;
+    try {
+      let finalFarms;
+      if (mode === "ganti") {
+        finalFarms = d.farms;
+      } else {
+        const sedia = farms || [];
+        const idGuna = new Set(sedia.map(f => String(f.id)));
+        const masuk = d.farms.map((f, i) => {
+          const c = JSON.parse(JSON.stringify(f));
+          if (idGuna.has(String(c.id))) {
+            c.id = `${Date.now()}${i}`;
+          }
+          idGuna.add(String(c.id));
+          const samaNama = sedia.filter(x => (x.nama || "").trim().toLowerCase() === (c.nama || "").trim().toLowerCase() && String(x.tahun) === String(c.tahun));
+          if (samaNama.length > 0 && c.nama) c.nama = `${c.nama} (IMPORT)`;
+          return c;
+        });
+        finalFarms = [...sedia, ...masuk];
+      }
+      await saveData(`myamk-farms-${user.username}`, finalFarms);
+      if (d.indeks && typeof d.indeks === "object") {
+        for (const k of Object.keys(d.indeks)) {
+          const nk = k.replace(/^myamk-indeks-[^-]+-/, `myamk-indeks-${user.username}-`);
+          try {
+            if (mode === "gabung" && localStorage.getItem(nk)) continue;
+            localStorage.setItem(nk, JSON.stringify(d.indeks[k]));
+          } catch (er) {}
+        }
+      }
+      setBkMsg(mode === "ganti" ? `✓ DIGANTIKAN — ${finalFarms.length} LADANG DIPULIHKAN` : `✓ DIGABUNG — ${d.farms.length} LADANG DITAMBAH (JUMLAH: ${finalFarms.length})`);
+      if (onRestore) onRestore(finalFarms);
+      setPending(null);
+      setTimeout(() => setBkMsg(""), 6000);
+    } catch (err) {
+      setBkMsg("✕ RALAT MEMULIHKAN DATA");
+      setPending(null);
+      setTimeout(() => setBkMsg(""), 4000);
+    }
   };
   const ca = activeFarm ? calcCartaAlir(activeFarm) : null;
   const amk = activeFarm && ca ? calcAMK(activeFarm, ca) : null;
@@ -6610,7 +6646,110 @@ ${amk.kb2Items.map(h => `<tr><td>&nbsp;&nbsp;&nbsp;${h.nama}</td><td class="c">$
     style: {
       display: "none"
     }
-  }), React.createElement("div", {
+  }), pending && React.createElement("div", {
+    style: {
+      position: "fixed",
+      inset: 0,
+      background: "rgba(30,27,75,0.55)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 9999,
+      padding: 16
+    },
+    onClick: () => setPending(null)
+  }, React.createElement("div", {
+    onClick: e => e.stopPropagation(),
+    style: {
+      background: "#fff",
+      borderRadius: 16,
+      padding: 18,
+      maxWidth: 400,
+      width: "100%",
+      boxShadow: "0 20px 50px rgba(0,0,0,0.3)"
+    }
+  }, React.createElement("div", {
+    style: {
+      fontSize: 14,
+      fontWeight: 800,
+      color: P[800],
+      marginBottom: 6
+    }
+  }, "PILIH CARA PULIH"), React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "#555",
+      lineHeight: 1.6,
+      marginBottom: 12,
+      padding: "8px 10px",
+      background: P[50],
+      borderRadius: 8
+    }
+  }, "Fail sandaran: ", React.createElement("strong", null, pending.farms.length, " ladang"), pending.tarikh ? ` • ${String(pending.tarikh).slice(0, 10)}` : "", React.createElement("br", null), React.createElement("span", {
+    style: {
+      color: "#888",
+      fontSize: 10
+    }
+  }, pending.farms.map(f => f.nama || "TANPA NAMA").join(", ")), React.createElement("br", null), "Ladang sedia ada dalam akaun ini: ", React.createElement("strong", null, (farms || []).length)), React.createElement("button", {
+    onClick: () => applyRestore("gabung"),
+    style: {
+      width: "100%",
+      padding: "12px",
+      borderRadius: 10,
+      border: "2px solid #059669",
+      background: "#f0fdf4",
+      color: "#065f46",
+      fontWeight: 700,
+      fontSize: 12,
+      cursor: "pointer",
+      textAlign: "left",
+      marginBottom: 8
+    }
+  }, "➕ GABUNG (DISYORKAN)", React.createElement("div", {
+    style: {
+      fontSize: 10,
+      fontWeight: 500,
+      color: "#047857",
+      marginTop: 3
+    }
+  }, "Kekalkan ladang sedia ada, tambah ladang dari fail di sebelahnya.")), React.createElement("button", {
+    onClick: () => {
+      if (window.confirm("AMARAN: Semua ladang sedia ada akan dipadam dan digantikan. Teruskan?")) applyRestore("ganti");
+    },
+    style: {
+      width: "100%",
+      padding: "12px",
+      borderRadius: 10,
+      border: "2px solid #dc2626",
+      background: "#fef2f2",
+      color: "#991b1b",
+      fontWeight: 700,
+      fontSize: 12,
+      cursor: "pointer",
+      textAlign: "left",
+      marginBottom: 8
+    }
+  }, "♻️ GANTI SEMUA", React.createElement("div", {
+    style: {
+      fontSize: 10,
+      fontWeight: 500,
+      color: "#b91c1c",
+      marginTop: 3
+    }
+  }, "Padam semua ladang sedia ada, guna fail ini sahaja. Untuk pulih selepas data hilang.")), React.createElement("button", {
+    onClick: () => setPending(null),
+    style: {
+      width: "100%",
+      padding: "9px",
+      borderRadius: 10,
+      border: `1px solid ${P[200]}`,
+      background: "transparent",
+      color: P[600],
+      fontWeight: 600,
+      fontSize: 11,
+      cursor: "pointer"
+    }
+  }, "BATAL"))), React.createElement("div", {
     style: {
       marginTop: 10,
       padding: "8px 10px",
@@ -6621,7 +6760,7 @@ ${amk.kb2Items.map(h => `<tr><td>&nbsp;&nbsp;&nbsp;${h.nama}</td><td class="c">$
       color: "#92400e",
       lineHeight: 1.6
     }
-  }, React.createElement("strong", null, "CARA PINDAH DATA KE PERANTI LAIN:"), React.createElement("br", null), "1. Tekan MUAT TURUN SANDARAN di peranti lama", React.createElement("br", null), "2. Hantar fail JSON ke peranti baru (WhatsApp / emel / Google Drive)", React.createElement("br", null), "3. Log masuk di peranti baru, tekan PULIH SANDARAN, pilih fail tersebut")), user.isAdmin && React.createElement(UrusPengguna, null), React.createElement(Card, {
+  }, React.createElement("strong", null, "CARA PINDAH DATA KE PERANTI LAIN:"), React.createElement("br", null), "1. Tekan MUAT TURUN SANDARAN di peranti lama", React.createElement("br", null), "2. Hantar fail JSON ke peranti baru (WhatsApp / emel / Google Drive)", React.createElement("br", null), "3. Log masuk di peranti baru, tekan PULIH SANDARAN, pilih fail tersebut", React.createElement("br", null), "4. Pilih ", React.createElement("strong", null, "GABUNG"), " untuk kekalkan ladang sedia ada, atau ", React.createElement("strong", null, "GANTI"), " untuk ganti semuanya")), user.isAdmin && React.createElement(UrusPengguna, null), React.createElement(Card, {
     title: "MENGENAI myAMK",
     icon: "ℹ️"
   }, React.createElement("p", {
