@@ -1,0 +1,17 @@
+{
+  "name": "myAMK — Analisa Margin Kasar Ternakan",
+  "short_name": "myAMK",
+  "description": "Aplikasi pengiraan Analisa Margin Kasar bagi sektor penternakan ruminan.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FDFAF4",
+  "theme_color": "#5A3A1E",
+  "lang": "ms",
+  "icons": [
+    { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
